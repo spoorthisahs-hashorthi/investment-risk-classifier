@@ -2,13 +2,14 @@
 
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 from app.config import settings
 from app.api.v1.endpoints import router as api_v1_router
+from app.models.schemas import APIErrorResponse
 
 # Configure logging
 logging.basicConfig(
@@ -29,8 +30,8 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description=(
-        "Authoritative API for screening online investment promotions and URLs for potential risk indicators. "
-        "Provides modular linguistic indicator detection, SSRF-safe URL lexical inspection, and calibrated uncertainty synthesis."
+        "Rules-based educational screening API for submitted investment promotion text and URL structure. "
+        "Submitted websites are not contacted; results include evidence and uncertainty."
     ),
     lifespan=lifespan,
 )
@@ -55,11 +56,25 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "error": "Validation Error",
-            "details": error_messages,
-            "message": "Input validation failed. Please review the submitted parameters.",
-        },
+        content=APIErrorResponse(
+            error="Validation Error",
+            details=error_messages,
+            message="Input validation failed. Please review the submitted parameters.",
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    detail = exc.detail if isinstance(exc.detail, str) else "The request could not be completed."
+    return JSONResponse(
+        status_code=exc.status_code,
+        headers=exc.headers,
+        content=APIErrorResponse(
+            error="Validation Error" if exc.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY else "Request Error",
+            message=detail,
+            details=[],
+        ).model_dump(),
     )
 
 
@@ -69,10 +84,11 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled exception on {request.method} {request.url.path}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": "Internal Server Error",
-            "message": "An error occurred during analysis. Please try again or simplify the input.",
-        },
+        content=APIErrorResponse(
+            error="Internal Server Error",
+            message="An error occurred during analysis. Please try again or simplify the input.",
+            details=[],
+        ).model_dump(),
     )
 
 
@@ -88,5 +104,5 @@ async def health_check():
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
-        "network_inspection_enabled": settings.NETWORK_INSPECTION_ENABLED,
+        "live_url_fetch_enabled": False,
     }

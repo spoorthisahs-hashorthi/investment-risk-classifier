@@ -79,7 +79,7 @@ class InputsAnalyzed(BaseModel):
 class AnalysisRequest(BaseModel):
     text: Optional[str] = Field(None, max_length=20000, description="Pasted promotional or marketing text to evaluate")
     url: Optional[str] = Field(None, max_length=2048, description="URL of investment website or social link")
-    enable_network_check: bool = Field(True, description="Whether to perform bounded SSRF-safe network probing for URL")
+    enable_network_check: bool = Field(False, description="Compatibility field; live URL retrieval is unavailable and never performed")
 
     @field_validator("text", mode="before")
     @classmethod
@@ -115,7 +115,7 @@ class AnalysisResponse(BaseModel):
     timestamp: str = Field(..., description="ISO 8601 UTC timestamp")
     category: RiskCategory = Field(..., description="Assigned risk category")
     category_display: str = Field(..., description="Human-readable category badge text")
-    risk_score: float = Field(..., ge=0.0, le=1.0, description="Calibrated heuristic risk indicator score between 0.0 and 1.0")
+    risk_score: float = Field(..., ge=0.0, le=1.0, description="Heuristic risk indicator score between 0.0 and 1.0; not a fraud probability")
     uncertainty_level: UncertaintyLevel = Field(..., description="Assessment uncertainty")
     uncertainty_explanation: str = Field(..., description="Plain-language explanation of why uncertainty is at this level")
     summary: str = Field(..., description="Comprehensive plain-language synthesis of observations")
@@ -140,6 +140,12 @@ class FeedbackRequest(BaseModel):
 class FeedbackResponse(BaseModel):
     success: bool
     message: str
+
+
+class APIErrorResponse(BaseModel):
+    error: str
+    message: str
+    details: List[str] = Field(default_factory=list)
 
 
 class SampleCase(BaseModel):

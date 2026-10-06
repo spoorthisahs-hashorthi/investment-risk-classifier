@@ -16,35 +16,6 @@ from app.models.schemas import (
     InputsAnalyzed,
 )
 
-# Standard official regulatory registers
-STANDARD_REGISTERS = [
-    {
-        "name": "US SEC EDGAR & FINRA BrokerCheck",
-        "url": "https://brokercheck.finra.org/",
-        "jurisdiction": "United States",
-    },
-    {
-        "name": "UK FCA Financial Services Register",
-        "url": "https://register.fca.org.uk/",
-        "jurisdiction": "United Kingdom",
-    },
-    {
-        "name": "Australian Securities and Investments Commission (ASIC)",
-        "url": "https://moneysmart.gov.au/check-and-report-scams/investor-alert-list",
-        "jurisdiction": "Australia",
-    },
-    {
-        "name": "SEBI / Reserve Bank Registry",
-        "url": "https://www.sebi.gov.in/",
-        "jurisdiction": "India",
-    },
-    {
-        "name": "IOSCO International Investor Alerts Portal",
-        "url": "https://www.iosco.org/investor_protection/?subsection=investor_alerts_portal",
-        "jurisdiction": "International",
-    },
-]
-
 MANDATORY_DISCLAIMER = (
     "This automated screening report is strictly an educational tool to help users identify potential warning signs. "
     "It is NOT financial advice, legal advice, a definitive fraud determination, or a guarantee of safety. "
@@ -101,14 +72,17 @@ class RiskSynthesizer:
         }
 
         all_findings = text_findings + all_url_findings
-        total_raw_weight = sum(weights.get(f.severity, 0.05) for f in all_findings)
+        # Repeated phrase matches remain visible as evidence, but a single rule type
+        # from one source contributes only once to the aggregate risk indicator.
+        scored_findings = self._unique_indicators(all_findings)
+        total_raw_weight = sum(weights.get(f.severity, 0.05) for f in scored_findings)
         
         # Non-linear asymptotic curve: 1.0 - 1.0 / (1.0 + raw_weight)
         normalized_risk_score = round(1.0 - (1.0 / (1.0 + total_raw_weight * 1.5)), 3)
 
-        critical_count = sum(1 for f in all_findings if f.severity == SeverityLevel.CRITICAL)
-        high_count = sum(1 for f in all_findings if f.severity == SeverityLevel.HIGH)
-        medium_count = sum(1 for f in all_findings if f.severity == SeverityLevel.MEDIUM)
+        critical_count = sum(1 for f in scored_findings if f.severity == SeverityLevel.CRITICAL)
+        high_count = sum(1 for f in scored_findings if f.severity == SeverityLevel.HIGH)
+        medium_count = sum(1 for f in scored_findings if f.severity == SeverityLevel.MEDIUM)
 
         # 3. Categorization logic
         if critical_count >= 1 or normalized_risk_score >= 0.48 or (high_count >= 2):
@@ -136,8 +110,8 @@ class RiskSynthesizer:
             critical_count=critical_count,
             high_count=high_count,
             medium_count=medium_count,
-            text_findings=text_findings,
-            url_findings=all_url_findings,
+            text_findings=self._unique_indicators(text_findings),
+            url_findings=self._unique_indicators(all_url_findings),
             has_text=has_text,
             has_url=has_url,
         )
@@ -166,7 +140,10 @@ class RiskSynthesizer:
                 )
             )
             if network_status:
-                checks_performed.append(network_status)
+                if network_status.status == "completed":
+                    checks_performed.append(network_status)
+                else:
+                    checks_unavailable.append(network_status)
 
         # Explicitly document unavailable external checks so users know what was not checked
         checks_unavailable.append(
@@ -174,7 +151,7 @@ class RiskSynthesizer:
                 name="official_regulatory_api_lookup",
                 display_name="Automated Government Regulatory Database Lookup",
                 status="unavailable",
-                details="Authoritative national registers (e.g. SEC EDGAR, FINRA, UK FCA) require jurisdiction-specific entity IDs and manual legal review.",
+                details="No jurisdiction was selected and no official registry integration is configured; check the relevant regulator directly.",
             )
         )
         checks_unavailable.append(
@@ -182,7 +159,7 @@ class RiskSynthesizer:
                 name="domain_whois_registration_age",
                 display_name="Authoritative WHOIS Domain Age Lookup",
                 status="unavailable",
-                details="Direct WHOIS queries are restricted or rate-limited by registry RDAP quotas in default configuration.",
+                details="No authoritative WHOIS/RDAP domain-age source is configured for this project.",
             )
         )
 
@@ -221,6 +198,17 @@ class RiskSynthesizer:
             verification_checklist=verification_checklist,
         )
 
+    @staticmethod
+    def _unique_indicators(findings: List[FindingItem]) -> List[FindingItem]:
+        unique: List[FindingItem] = []
+        seen = set()
+        for finding in findings:
+            key = (finding.source, finding.id)
+            if key not in seen:
+                seen.add(key)
+                unique.append(finding)
+        return unique
+
     def _build_insufficient_info_response(
         self,
         analysis_id: str,
@@ -253,7 +241,7 @@ class RiskSynthesizer:
                 text_length=text_meta.get("length", 0),
                 text_word_count=text_meta.get("word_count", 0),
                 has_url=has_url,
-                normalized_url=raw_url,
+                normalized_url=url_meta.get("normalized_url"),
                 domain=url_meta.get("host"),
             ),
             text_findings=[],
@@ -284,8 +272,7 @@ class RiskSynthesizer:
                     step=2,
                     title="Search National Regulators",
                     description="Check the official financial regulator in your country to confirm if the promoter or firm is authorized.",
-                    action_url="https://brokercheck.finra.org/",
-                    official_registry="FINRA BrokerCheck / SEC",
+                    official_registry="Your national securities regulator",
                 ),
             ],
         )
@@ -301,17 +288,17 @@ class RiskSynthesizer:
         if has_text and has_url and word_count >= 50 and network_status and network_status.status == "completed":
             return (
                 UncertaintyLevel.LOW,
-                "Both comprehensive promotional text and a reachable URL were evaluated. Uncertainty regarding pattern detection is low, although official regulator status still requires manual confirmation.",
+                "Substantial promotional text and a live URL inspection were completed. This level reflects pattern coverage only; official authorization still requires separate confirmation.",
             )
         elif (has_text and word_count >= 30) or (has_url and network_status and network_status.status == "completed"):
             return (
                 UncertaintyLevel.MEDIUM,
-                "Partial information was evaluated (either text without a link, or a link with limited surrounding promotional context). Uncertainty is moderate.",
+                "A substantial text sample was evaluated, but official status and any unvisited web page remain unverified. Uncertainty is moderate.",
             )
         else:
             return (
                 UncertaintyLevel.HIGH,
-                "Limited data was submitted. While preliminary indicators have been scanned, lack of complete promotional context or live website content leaves notable uncertainty.",
+                "Limited data was submitted. The URL was not visited, and complete promotional context or official status remains unverified.",
             )
 
     def _generate_summary(
@@ -333,25 +320,29 @@ class RiskSynthesizer:
                 top_reasons.append(f.title.lower())
             reasons_str = ", ".join(top_reasons)
             return (
-                f"Elevated concern identified. The submission triggered {total} significant warning indicator(s), "
-                f"including {reasons_str}. Such patterns are strongly characteristic of high-risk investment schemes, "
-                f"unrealistic return guarantees, or brand impersonation. Exercise extreme caution and do not commit funds "
-                f"without independent regulatory verification."
+                f"Elevated concern under this heuristic. The submission matched {total} distinct higher-severity indicator type(s), "
+                f"including {reasons_str}. These observations warrant careful independent verification but do not establish fraud. "
+                f"Do not transfer funds until you have verified the offer and recipient through trusted sources."
             )
 
         elif category == RiskCategory.NEEDS_REVIEW:
             return (
-                f"Needs careful review. The analysis detected {total} moderate risk indicator(s) that warrant further due diligence "
-                f"(such as aggressive promotion, urgency tactics, or non-standard link properties). "
-                f"While these patterns do not prove fraud, they deviate from standard institutional practices."
+                f"Needs review under this heuristic. The analysis detected {total} distinct indicator type(s) that warrant further due diligence "
+                f"(such as aggressive promotion, urgency tactics, or non-standard link properties). These patterns do not prove fraud."
             )
 
         else:  # LOWER_CONCERN
+            observed = self._unique_indicators(text_findings + url_findings)
+            if observed:
+                signal_names = ", ".join(f.title.lower() for f in observed[:3])
+                return (
+                    f"Lower concern overall under the current heuristic, with {len(observed)} lower-severity indicator type(s) observed, "
+                    f"including {signal_names}. These signals do not prove fraud; verify the offer independently. "
+                    "No critical or high-severity rule was triggered."
+                )
             return (
-                "Lower concern based on available pattern analysis. No prominent high-risk promotional triggers or suspicious "
-                "domain anomalies were identified in the submitted material. IMPORTANT: Absence of detected indicators does NOT "
-                "guarantee the safety or legitimacy of an investment. Fraudulent entities can use polished language and standard domains. "
-                "Always verify registration on official government databases."
+                "Lower concern under the rules applied to the submitted material. No listed warning indicator was detected, "
+                "but this does not establish that the offer or firm is legitimate or safe. Independently verify the firm and the specific offer with your regulator."
             )
 
     def _build_verification_checklist(
@@ -379,8 +370,7 @@ class RiskSynthesizer:
                     "Check whether the company and its representatives are authorized to offer securities or financial products. "
                     "In the US, use FINRA BrokerCheck or SEC EDGAR; in the UK, use the FCA Register; in other regions, consult your national securities authority."
                 ),
-                action_url="https://brokercheck.finra.org/",
-                official_registry="Securities Regulator Register",
+                official_registry="Your national securities regulator",
             )
         )
         step_num += 1
@@ -433,9 +423,8 @@ class RiskSynthesizer:
                     step=step_num,
                     title="Independent Mathematical Reality Check",
                     description=(
-                        "Remember that central bank risk-free rates (e.g., US Treasury yields) typically range around 4-5% annually. "
-                        "Any scheme offering 1% daily, 10% weekly, or 'guaranteed' high returns is offering yields hundreds of times market rates, "
-                        "which is statistically unsustainable without using incoming investor funds (Ponzi mechanics)."
+                        "Compare the promised return, timeframe, and stated risks with independent information from your regulator or a qualified adviser. "
+                        "Very high fixed returns described as guaranteed warrant careful scrutiny, but this pattern alone does not reveal how the offer is funded."
                     ),
                 )
             )

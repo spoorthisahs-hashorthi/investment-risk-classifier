@@ -27,20 +27,10 @@ class Settings(BaseModel):
         if origin.strip()
     ]
     
-    # Limits
-    MAX_TEXT_LENGTH: int = int(os.getenv("MAX_TEXT_LENGTH", "20000"))
-    MAX_URL_LENGTH: int = int(os.getenv("MAX_URL_LENGTH", "2048"))
-    
     # Network Inspection / SSRF Limits
-    NETWORK_INSPECTION_ENABLED: bool = os.getenv("NETWORK_INSPECTION_ENABLED", "true").lower() in ("true", "1", "t")
+    NETWORK_INSPECTION_ENABLED: bool = os.getenv("NETWORK_INSPECTION_ENABLED", "false").lower() in ("true", "1", "t")
     NETWORK_TIMEOUT_SECONDS: float = float(os.getenv("NETWORK_TIMEOUT_SECONDS", "4.0"))
     MAX_REDIRECTS: int = int(os.getenv("MAX_REDIRECTS", "3"))
     MAX_RESPONSE_BYTES: int = int(os.getenv("MAX_RESPONSE_BYTES", str(256 * 1024)))  # 256 KB
     
-    # Supabase / DB (Optional persistence)
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-
-
 settings = Settings()

@@ -57,13 +57,11 @@ def test_blocked_special_hostnames():
 
 
 @pytest.mark.asyncio
-async def test_network_inspector_blocks_local_destination():
+async def test_network_inspection_is_disabled_in_current_app():
     inspector = NetworkInspector()
-    # Attempting to inspect localhost or private target should be blocked safely without outbound connection
+    # The live retrieval component is intentionally disabled for the current product flow.
     findings, status_item, page_text = await inspector.inspect("http://127.0.0.1:8000/internal")
-    
-    assert status_item.status == "failed"
-    assert "SSRF" in status_item.details or "rejected" in status_item.details
+
+    assert status_item.status == "skipped"
     assert page_text is None
-    # Must emit a critical security finding
-    assert any(f.id == "url_ssrf_forbidden_destination" for f in findings)
+    assert findings == []

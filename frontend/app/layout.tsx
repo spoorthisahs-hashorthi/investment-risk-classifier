@@ -1,7 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import React from 'react';
-import { ShieldAlert, ExternalLink, HelpCircle } from 'lucide-react';
+import { ShieldAlert, ExternalLink, HelpCircle, LockKeyhole } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Investment Risk Screener | Text & URL Analysis',
@@ -17,10 +17,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen flex flex-col antialiased bg-slate-50 text-slate-900">
-        <header className="border-b border-slate-200 bg-white sticky top-0 z-40 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+        <header className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-40 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+              <div className="w-10 h-10 rounded-xl bg-[#176c65] flex items-center justify-center text-white shadow-md shadow-emerald-900/15">
                 <ShieldAlert className="w-6 h-6" aria-hidden="true" />
               </div>
               <div>
@@ -28,19 +28,18 @@ export default function RootLayout({
                   Investment Risk Screener
                 </h1>
                 <p className="text-xs text-slate-500">
-                  Early-Warning Analysis for Online Investment Promotions & URLs
+                  A calm first look at investment promotions
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                Educational Screening Aid
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-100">
+                <LockKeyhole className="w-3.5 h-3.5" /> Educational tool
               </span>
               <a
                 href="#educational-guide"
-                className="text-xs text-slate-600 hover:text-blue-600 font-medium inline-flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-slate-100 transition"
+                className="text-xs text-slate-600 hover:text-emerald-700 font-medium inline-flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-slate-100 transition"
               >
                 <HelpCircle className="w-4 h-4" />
                 How It Works

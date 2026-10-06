@@ -33,6 +33,7 @@ async def test_analyze_empty_payload_fails_validation():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/api/v1/analyze", json={})
         assert resp.status_code == 422
+        assert set(resp.json()) == {"error", "message", "details"}
 
 
 @pytest.mark.asyncio
@@ -84,7 +85,53 @@ async def test_analyze_lookalike_url_elevated():
 
 
 @pytest.mark.asyncio
-async def test_feedback_submission():
+async def test_url_credentials_are_rejected():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/v1/analyze", json={"url": "https://user:secret@example.org/path"})
+        assert resp.status_code == 422
+        assert set(resp.json()) == {"error", "message", "details"}
+        assert "secret" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_non_web_url_scheme_is_rejected():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/v1/analyze", json={"url": "ftp://example.org/invest"})
+        assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_text_limit_is_enforced_by_api():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/v1/analyze", json={"text": "a" * 20001})
+        assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_url_analysis_does_not_fetch_or_return_path_and_query():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/v1/analyze",
+            json={"url": "https://127.0.0.1/private?access_token=do-not-return", "enable_network_check": True},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["inputs_analyzed"]["normalized_url"] == "https://127.0.0.1"
+        assert "access_token" not in resp.text
+        assert "private" not in data["inputs_analyzed"]["normalized_url"]
+        statuses = {check["name"]: check["status"] for check in data["checks_unavailable"]}
+        assert statuses["url_network_inspection"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_feedback_submission(monkeypatch):
+    from app.api.v1 import endpoints
+
+    monkeypatch.setattr(endpoints.repository, "save_feedback", lambda feedback, timestamp: True)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # First perform an analysis

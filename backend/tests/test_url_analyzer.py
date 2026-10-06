@@ -31,7 +31,7 @@ def test_brand_impersonation(analyzer):
     assert meta["is_valid"] is True
     impersonation = next((f for f in findings if f.id == "url_brand_impersonation"), None)
     assert impersonation is not None
-    assert impersonation.severity == SeverityLevel.CRITICAL
+    assert impersonation.severity == SeverityLevel.HIGH
     assert "binance" in impersonation.title.lower()
 
 

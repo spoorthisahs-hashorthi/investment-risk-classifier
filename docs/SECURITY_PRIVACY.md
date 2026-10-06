@@ -1,66 +1,25 @@
-# Security & Privacy Safeguards
+# Security and privacy behavior
 
-## 1. Threat Model & Untrusted Input Policy
+## Current analysis route
 
-All user-submitted promotional text and website URLs are treated as untrusted and potentially hostile. The application enforces defense-in-depth protections across both backend network calls and presentation rendering.
+- Request models cap text at 20,000 characters and URLs at 2,048 characters.
+- Only HTTP(S) URLs are accepted. URLs with embedded usernames or passwords are rejected.
+- The analysis endpoint never connects to submitted hosts. It performs lexical analysis only, so no DNS, redirects, TLS, page download, or SSRF-relevant outbound fetch takes place.
+- Results expose the URL origin as metadata, not its path/query/fragment. A suspicious path match may include the matched path as evidence.
+- Analysis text, URLs, findings, and reports are not written to persistent storage by the analysis endpoint. Application errors are logged without request bodies.
 
----
+## Persistence and feedback
 
-## 2. Server-Side Request Forgery (SSRF) Mitigations
+The optional feedback route uses the legacy SQLite repository and can persist free-text feedback notes. It has no authentication or retention controls and is not connected to the main UI; do not expose it publicly without adding those controls or disabling the route. An existing `backend/data/local_store.db` file may contain older records; this application update does not delete or inspect those records.
 
-When evaluating user-submitted website links, the system performs network probing to check TLS certificates, redirects, and HTTP status codes. To protect internal network infrastructure, cloud metadata endpoints, and internal microservices from SSRF attacks, `NetworkInspector` implements the following defenses:
+The Supabase migration is inactive and denies access to client roles by omitting client policies. A future backend integration still needs narrowly scoped service policies and an ownership/retention model. Never expose a service-role key in browser code.
 
-### Disallowed Network Blacklist
-Before establishing any socket connection, the target hostname is resolved into its constituent IP addresses. **Every single IP** returned by DNS is validated against the following disallowed CIDR blocks:
-- **Loopback:** `127.0.0.0/8`, `::1/128`
-- **RFC 1918 Private Ranges:**
-  - `10.0.0.0/8`
-  - `172.16.0.0/12`
-  - `192.168.0.0/16`
-- **Cloud Provider Metadata Endpoints:**
-  - `169.254.169.254` (AWS, GCP, Azure, DigitalOcean)
-  - `metadata.google.internal`
-  - `instance-data`
-- **Link-Local & Multicast:**
-  - `169.254.0.0/16`, `fe80::/10`
-  - `224.0.0.0/4`, `ff00::/8`
-- **Carrier-Grade NAT (CGNAT):** `100.64.0.0/10`
-- **IPv4-Mapped IPv6:** `::ffff:0:0/96`
-- **Reserved & Future Use:** `240.0.0.0/4`, `0.0.0.0/8`
+## Legacy network code and deployment
 
-If **any** resolved IP belongs to any of these ranges, the probe is terminated immediately with a security event: `url_ssrf_forbidden_destination`.
+`backend/app/analyzers/network_inspector.py` is not called by the API. It performs a DNS validation followed by an independent HTTPX hostname connection, which can resolve again; therefore it does not pin the validated IP to the actual connection and must not be treated as production SSRF protection. Do not reconnect it without a pinned-destination transport and a reviewed redirect strategy.
 
-### Revalidation on Every Redirect Hop
-Attackers often use open redirects on public servers that bounce to `127.0.0.1` or private intranet targets (DNS rebinding / redirect attacks).
-- The network inspector uses `follow_redirects=False` in HTTPX.
-- Every HTTP redirect (`301`, `302`, `303`, `307`, `308`) is intercepted manually.
-- The `Location` header is parsed, and DNS resolution + IP address validation is re-executed on the destination before making the next hop.
-- Redirection count is strictly bounded to `MAX_REDIRECTS=3`.
+The service has no application-level rate limiter or request-body limit beyond the Pydantic field limits. A public deployment needs ingress request-size limits, rate limiting, HTTPS, narrowly configured CORS, and monitoring that avoids recording sensitive request bodies. No external reputation or regulator APIs are contacted.
 
-### Strict Resource Limits
-- **Connection Timeout:** Strict `4.0` second socket timeout.
-- **Payload Bound:** Maximum `256 KB` body read limit (`MAX_RESPONSE_BYTES`).
-- **No Script Execution:** Retrieved HTML is parsed solely as static DOM using BeautifulSoup; JavaScript is never executed, and external assets (images, stylesheets, scripts) are never downloaded.
+## UI rendering
 
----
-
-## 3. Privacy & Data Minimization Policy
-
-### Zero Retention of Raw Submitted Text
-- To respect user confidentiality and protect sensitive personal communications, **raw submitted promotional text is never stored in persistent databases**.
-- Only a one-way cryptographic SHA-256 hash (`text_hash`) is retained to detect duplicates or support feedback correlation.
-
-### Sanitized URL Retention
-- If a URL contains embedded credentials (`user:password@domain`), the credentials are stripped prior to storage.
-- Non-sensitive domain hosts are retained solely for aggregation and abuse monitoring.
-
-### Row Level Security (RLS)
-- Supabase migrations enforce Row Level Security on `risk_analyses` and `analysis_feedback`.
-- Privileged service-role keys are kept strictly on the backend and are never exposed in browser bundles.
-
----
-
-## 4. UI Rendering Security & XSS Mitigation
-
-- React's JSX safely escapes strings by default.
-- Highlighted text spans are rendered through standard React text nodes (`<span>` and `<mark>`) with index-based offsets rather than dangerous `dangerouslySetInnerHTML`.
+Submitted text and result strings are rendered as React text nodes. The highlighted text view uses offsets and standard React elements; it does not inject submitted HTML.

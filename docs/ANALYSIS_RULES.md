@@ -1,81 +1,36 @@
-# Analysis Rules, Calibration & Limitations
+# Analysis rules and regression coverage
 
-## 1. Indicator Catalog
+## What the result means
 
-The system screens submissions against a transparent catalog of empirical risk indicators documented in securities regulatory warnings (SEC Investor Bulletins, FCA ScamSmart, FINRA Investor Alerts).
+The API uses explicit lexical rules and heuristic score thresholds. It has no trained model, labeled production dataset, calibration study, or measured accuracy. Scores are not fraud probabilities. A match means only that the submitted wording or URL structure matches a rule.
 
-### Text Indicators
-| Rule ID | Title | Category | Severity | Description |
-|---|---|---|---|---|
-| `text_guaranteed_profit` | Guaranteed Returns or Profit Promise | Financial Promise | Critical | Promises of guaranteed profit; legitimate investments always carry market risk. |
-| `text_unrealistic_rate` | Unrealistically High Periodic Return | Financial Promise | Critical | Claims of 1%+ daily or 10%+ weekly returns (mathematically unsustainable compound interest). |
-| `text_capital_multiplier` | Rapid Wealth Multiplier Claim | Financial Promise | High | Promises to double or triple capital in days/hours. |
-| `text_zero_risk` | Claim of Zero or No Risk | Risk Claim | High | Deceptive claims that losses are impossible or capital is 100% immune from loss. |
-| `text_urgency_pressure` | Urgency & Artificial Scarcity | Urgency / Scarcity | Medium | Fabricating tight deadlines, limited slots, or FOMO pressure. |
-| `text_recruitment_incentive` | Recruitment & Referral Incentives | Recruitment / MLM | High | Heavy emphasis on downlines, binary trees, and member referral bonuses over product value. |
-| `text_vague_algorithm` | Vague or Mythical Trading Algorithm | Vague Mechanism | Medium | References to secret quantum AI bots or money-printing trading loopholes. |
-| `text_irreversible_payment` | Direct Irreversible Crypto / Wire Payment | Payment Method | High | Demanding direct USDT TRC-20, Bitcoin wallet transfers, or gift cards. |
-| `text_celebrity_media` | Celebrity Endorsement / Media Impersonation | Authority Endorsement | High | Fabricated claims of endorsement by Elon Musk, BBC, Shark Tank, etc. |
-| `text_lifestyle_promise` | Extreme Lifestyle / Overnight Wealth | Financial Promise | Low | Emotional appeals to quit jobs or become millionaires overnight. |
+## Current text rule families
 
----
+The Python catalog in `backend/app/analyzers/text_analyzer.py` currently checks for guaranteed or periodic returns, rapid multiplication of money, no-risk claims, urgency/scarcity, recruitment incentives, vague algorithm claims, direct crypto/unusual payments, upfront/release fees, celebrity/media associations, and instant-wealth claims. Each match includes the literal matched phrase and character offsets.
 
-### URL & Domain Indicators
-| Rule ID | Title | Category | Severity | Description |
-|---|---|---|---|---|
-| `url_ip_as_hostname` | Raw IP Hostname | Domain Reputation | Critical | Direct IP addresses (e.g. `198.51.100.24`) instead of registered domains. |
-| `url_brand_impersonation` | Brand Impersonation / Lookalike | Domain Reputation | Critical | Domain containing major exchange or bank brand on unauthorized TLDs. |
-| `url_credentials_embedded` | Embedded Credentials in URL | Lexical Anomaly | Critical | Phishing syntax embedding username/token in host string. |
-| `url_punycode_homoglyph` | Punycode / Homograph Attack | Domain Reputation | High | `xn--` internationalized domains mimicking Latin brand spellings. |
-| `url_typosquatting` | Typosquatting / Edit Distance | Domain Reputation | High | Domain label 1-2 edit distance away from recognized financial institutions. |
-| `url_suspicious_path` | Suspicious Path Pattern | Lexical Anomaly | High | Paths such as `/claim-airdrop`, `/double-btc`, `/connect-wallet`. |
-| `url_shortener_used` | URL Shortener | Lexical Anomaly | Medium | Known link shortener (e.g., bit.ly) masking true destination. |
-| `url_high_abuse_tld` | High-Abuse / Cheap TLD | Domain Reputation | Medium | Domains using `.xyz`, `.top`, `.click`, `.buzz`, `.cfd`, etc. |
-| `url_excessive_subdomains` | Excessive Subdomain Stacking | Lexical Anomaly | Medium | 4+ nested subdomains used to mislead mobile displays. |
-| `url_insecure_http` | Insecure HTTP Protocol | Network Security | Medium | Plaintext HTTP used for financial interactions instead of TLS. |
-| `url_ssrf_forbidden_destination`| Blocked Internal / Reserved Destination | Network Security | Critical | URL resolves to loopback, private RFC1918, or cloud metadata IP. |
+These regular expressions are a baseline. They can miss paraphrases and languages other than English, and can flag benign context. The payment checks are lexical and cannot determine whether a fee or payment route is legitimate.
 
----
+## Current URL rule families
 
-## 2. Risk Score & Categorization Methodology
+`backend/app/analyzers/url_analyzer.py` checks numeric IP hosts, selected brand-name references and edit-distance similarities, punycode labels, URL shorteners, a local TLD watchlist, nested subdomains, selected path terms, and HTTP (unencrypted) schemes. TLD and brand lists are local heuristics, not a current reputation feed or authoritative list of official domains. TLD alone is a weak signal.
 
-### Scoring Weights
-- **Critical:** 0.40
-- **High:** 0.25
-- **Medium:** 0.12
-- **Low:** 0.05
+The API does not visit submitted URLs. Redirects, page contents, DNS reputation, TLS certificates, domain age, and live destination safety are not checked; those statuses are reported as skipped or unavailable. Embedded credentials and non-HTTP(S) URL schemes are rejected at request validation rather than scored as findings.
 
-The raw indicator weights are summed and mapped through an asymptotic diminishing-returns curve:
-$$\text{Risk Score} = 1.0 - \frac{1.0}{1.0 + (\text{Raw Weight} \times 1.5)}$$
+## Score and categories
 
-### Category Thresholds
-1. **Insufficient Information:**
-   - No text and no URL provided; OR
-   - Text is shorter than 8 words with no URL and no detected pattern.
-2. **Elevated Concern:**
-   - Any `Critical` severity finding (e.g., guaranteed profit, lookalike domain, direct IP host); OR
-   - 2 or more `High` severity findings; OR
-   - Aggregated risk score $\ge 0.48$.
-3. **Needs Review:**
-   - 1 `High` severity finding; OR
-   - 2 or more `Medium` severity findings; OR
-   - Aggregated risk score $\ge 0.20$.
-4. **Lower Concern:**
-   - No critical or high indicators detected, and risk score $< 0.20$.
+Finding weights are Critical 0.40, High 0.25, Medium 0.12, and Low 0.05. Repeated occurrences of the same rule from the same source remain visible as separate evidence, but contribute only once to the combined score and category. The weighted sum is transformed with `1 - 1 / (1 + weight * 1.5)`. This is a hand-set heuristic, not statistical calibration.
 
----
+- **Insufficient information:** no usable input, or fewer than eight words of text with no URL and no detected indicator.
+- **Elevated concern:** any Critical indicator, at least two distinct High indicator types, or a score of at least 0.48.
+- **Needs review:** at least one High indicator type, at least two Medium types, or a score of at least 0.20.
+- **Lower concern:** none of the above. A single Medium or Low indicator can remain in this category; the summary names that observed signal.
 
-## 3. Uncertainty Calibration
+No category proves an offer fraudulent or safe. The API currently reports Medium or High uncertainty for active submissions; Low uncertainty requires completed live URL inspection, which the API route does not currently perform.
 
-Uncertainty is explicitly evaluated along three tiers:
-- **Low Uncertainty:** Both substantive promotional text ($\ge 50$ words) and a reachable, verified public URL were analyzed.
-- **Medium Uncertainty:** Partial information was provided (e.g., text only without a link, or link only with limited page text).
-- **High Uncertainty:** Sparse input was submitted ($< 30$ words or unresolvable URL).
+## Regression “backtest”
 
----
+`backend/tests/test_functional_backtest.py` runs a deterministic scenario suite over the five hand-authored API sample cases, repeated-rule scoring, and crypto/upfront-payment examples. These are regression fixtures written by the project, not independently labeled or historically collected data. Passing them checks expected behavior; it does not measure real-world precision, recall, false-positive rates, or accuracy.
 
-## 4. Known Limitations
+## Data provenance
 
-1. **Not a Definite Fraud Detector:** Rule-based matching detects recognizable linguistic and syntactic patterns. Fraudsters can compose polished copy with zero trigger words.
-2. **Absence of Proof is Not Proof of Safety:** A **Lower Concern** rating must never be interpreted as an official endorsement or safety guarantee.
-3. **Registry Boundaries:** Automated checks do not query official national regulatory databases directly; users must perform official register checks (SEC, FINRA, FCA, ASIC, SEBI) as suggested in the verification checklist.
+No external training data or reputation dataset is bundled. Sample cases are educational examples authored in the API source. No model accuracy or comparative performance claim is available.

@@ -218,7 +218,7 @@ ${result.disclaimer}`;
             ></div>
           </div>
           <p className="text-[11px] text-slate-400 mt-1.5">
-            Calibrated weighted indicator score. Not a legal verdict or fraud probability.
+            Heuristic weighted indicator score. Not a legal verdict or fraud probability.
           </p>
         </div>
 

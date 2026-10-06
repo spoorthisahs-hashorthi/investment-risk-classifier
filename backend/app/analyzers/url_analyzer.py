@@ -6,14 +6,14 @@ from urllib.parse import urlparse
 from typing import List, Tuple, Dict, Any, Optional
 from app.models.schemas import FindingItem, FindingCategory, SeverityLevel
 
-# Well-known URL shorteners
+# Known URL shorteners. Messaging links are not treated as shorteners.
 URL_SHORTENERS = {
-    "bit.ly", "tinyurl.com", "t.me", "is.gd", "cutt.ly", "rb.gy",
+    "bit.ly", "tinyurl.com", "is.gd", "cutt.ly", "rb.gy",
     "ow.ly", "buff.ly", "rebrand.ly", "soo.gd", "shorturl.at", "t.co",
     "tiny.cc", "goo.gl", "bit.do", "bl.ink", "lnkd.in"
 }
 
-# TLDs historically over-represented in ephemeral scam campaigns and phishing
+# Local heuristic watchlist only; a listed TLD is not evidence that a domain is malicious.
 HIGH_ABUSE_TLDS = {
     "xyz", "top", "click", "buzz", "cfd", "rest", "icu", "sbs",
     "monster", "fit", "stream", "loan", "trade", "racing", "work",
@@ -98,16 +98,12 @@ class URLAnalyzer:
         netloc = parsed.netloc.lower()
         path = parsed.path.lower()
 
-        # Split host and port
-        host = netloc
-        port = None
-        if ":" in netloc and not (netloc.startswith("[") and netloc.endswith("]")):
-            parts = netloc.split(":")
-            host = parts[0]
-            try:
-                port = int(parts[1])
-            except ValueError:
-                pass
+        # Use parsed hostname/port so IPv6 literals and authority syntax are handled correctly.
+        host = (parsed.hostname or "").lower()
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
 
         # 1. Check scheme
         if scheme not in ("http", "https"):
@@ -129,7 +125,7 @@ class URLAnalyzer:
                     title="Insecure HTTP Protocol",
                     category=FindingCategory.NETWORK_SECURITY,
                     severity=SeverityLevel.MEDIUM,
-                    explanation="The link uses unencrypted HTTP. Legitimate financial, investment, and crypto platforms require encrypted HTTPS to protect transactions and user credentials.",
+                    explanation="The link uses unencrypted HTTP, so traffic may not be protected in transit. HTTPS status alone would not establish that an offer is safe.",
                     evidence=f"Scheme: {scheme}://",
                     source="url_analysis",
                 )
@@ -160,7 +156,7 @@ class URLAnalyzer:
                     title="Raw IP Address Used Instead of Domain Name",
                     category=FindingCategory.DOMAIN_REPUTATION,
                     severity=SeverityLevel.CRITICAL,
-                    explanation="Legitimate financial companies register brand domains. Direct IP address links are strongly correlated with transient, fly-by-night phishing servers or command-and-control nodes.",
+                    explanation="The link uses a numeric network address instead of a recognizable domain. This can make the operator harder to identify and is worth checking independently.",
                     evidence=f"Direct IP: {host}",
                     source="url_analysis",
                 )
@@ -194,7 +190,7 @@ class URLAnalyzer:
                     title="URL Shortening Service Detected",
                     category=FindingCategory.LEXICAL_ANOMALY,
                     severity=SeverityLevel.MEDIUM,
-                    explanation="The link uses a URL shortener which masks the actual target website. Scammers frequently use shorteners to bypass initial domain reputation filters.",
+                    explanation="A URL shortener hides the final destination until the link is opened. Check the destination through a trusted source before visiting it.",
                     evidence=f"Shortener: {host}",
                     source="url_analysis",
                 )
@@ -233,10 +229,10 @@ class URLAnalyzer:
             findings.append(
                 FindingItem(
                     id="url_high_abuse_tld",
-                    title="High-Abuse Top-Level Domain (TLD)",
+                    title="TLD on Heuristic Watchlist",
                     category=FindingCategory.DOMAIN_REPUTATION,
                     severity=SeverityLevel.MEDIUM,
-                    explanation=f"The top-level domain '.{tld}' is frequently favored by disposable investment scam campaigns due to low registration cost and minimal identity verification.",
+                    explanation=f"The '.{tld}' top-level domain appears on this tool's local heuristic watchlist. A TLD alone is a weak signal and does not establish whether a website is safe or malicious.",
                     evidence=f"TLD: .{tld}",
                     source="url_analysis",
                 )
@@ -256,10 +252,10 @@ class URLAnalyzer:
                     findings.append(
                         FindingItem(
                             id="url_brand_impersonation",
-                            title=f"Potential Brand Impersonation: '{brand.capitalize()}'",
+                            title=f"Possible Brand Name in Domain: '{brand.capitalize()}'",
                             category=FindingCategory.DOMAIN_REPUTATION,
-                            severity=SeverityLevel.CRITICAL,
-                            explanation=f"The domain contains the brand name '{brand}', but does not appear to be an official domain of {brand.capitalize()}. Scammers create lookalike domains (e.g. '{brand}-login.top') to siphon credentials and deposits.",
+                            severity=SeverityLevel.HIGH,
+                            explanation=f"The domain contains the name '{brand}' but does not match the limited set of common domains used by that brand. This lexical comparison can be wrong; confirm the exact domain through the brand's independently found official channels.",
                             evidence=f"Host '{host}' references brand '{brand}'",
                             source="url_analysis",
                         )
@@ -300,7 +296,8 @@ class URLAnalyzer:
 
         metadata = {
             "is_valid": True,
-            "normalized_url": url_str,
+            # Return only the origin; path, query, and fragment may contain personal or secret tokens.
+            "normalized_url": f"{scheme}://{host}" + (f":{port}" if port else ""),
             "scheme": scheme,
             "host": host,
             "port": port,

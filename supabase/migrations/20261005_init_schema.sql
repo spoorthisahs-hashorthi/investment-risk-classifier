@@ -35,23 +35,6 @@ CREATE INDEX IF NOT EXISTS idx_analysis_feedback_analysis_id ON public.analysis_
 ALTER TABLE public.risk_analyses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.analysis_feedback ENABLE ROW LEVEL SECURITY;
 
--- Allow anonymous or authenticated clients to insert new analyses via backend service role or authorized token
-CREATE POLICY "Allow service role insert into risk_analyses" 
-ON public.risk_analyses 
-FOR INSERT 
-TO authenticated, service_role 
-WITH CHECK (true);
-
--- Allow public read of non-sensitive high-level statistics
-CREATE POLICY "Allow public select of public analyses stats" 
-ON public.risk_analyses 
-FOR SELECT 
-TO anon, authenticated 
-USING (true);
-
--- Allow inserting feedback
-CREATE POLICY "Allow insert into analysis_feedback" 
-ON public.analysis_feedback 
-FOR INSERT 
-TO anon, authenticated, service_role 
-WITH CHECK (true);
+-- No public or authenticated-client policies are defined. Analysis reports and
+-- feedback remain inaccessible through client roles; a future backend service
+-- must define narrow insert/read policies before this draft is used.

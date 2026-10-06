@@ -1,17 +1,22 @@
-"""API v1 router containing risk analysis, sample cases, feedback, and health endpoints."""
+"""API v1 router for risk analysis, educational sample cases, and optional feedback."""
 
+from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, HTTPException, status
 
 from app.models.schemas import (
     AnalysisRequest,
     AnalysisResponse,
+    APIErrorResponse,
     SampleCase,
     RiskCategory,
+    FeedbackRequest,
+    FeedbackResponse,
 )
 from app.analyzers.text_analyzer import TextAnalyzer
 from app.analyzers.url_analyzer import URLAnalyzer
 from app.analyzers.synthesis import RiskSynthesizer
+from app.storage.repository import repository
 
 router = APIRouter()
 
@@ -69,7 +74,7 @@ SAMPLE_CASES: List[SampleCase] = [
         ),
         sample_url="https://investor.vanguard.com",
         expected_category=RiskCategory.LOWER_CONCERN,
-        learning_notes="Demonstrates balanced disclosures, explicit acknowledgement of principal risk, lack of impossible return promises, and an authentic domain.",
+        learning_notes="Demonstrates balanced disclosures and acknowledgement of principal risk. The URL is not checked for ownership or official status by this tool.",
     ),
     SampleCase(
         id="sample_insufficient_info",
@@ -83,12 +88,16 @@ SAMPLE_CASES: List[SampleCase] = [
 ]
 
 
-@router.post("/analyze", response_model=AnalysisResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/analyze",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+    responses={422: {"model": APIErrorResponse}},
+)
 async def analyze_investment_offer(request: AnalysisRequest) -> AnalysisResponse:
     """
-    Authoritative analysis endpoint for evaluating promotional text and website URLs.
-    Validates input, runs modular text and URL analyzers, applies SSRF-safe network probing,
-    and returns a calibrated risk assessment with verifiable evidence.
+    Analyze promotional text and URL structure without contacting submitted websites.
+    Returns a heuristic assessment with evidence and uncertainty.
     """
     raw_text = request.text
     raw_url = request.url
@@ -144,3 +153,11 @@ async def get_sample_cases() -> List[SampleCase]:
     """Retrieve educational sample cases for testing and demonstration."""
     return SAMPLE_CASES
 
+
+@router.post("/feedback", response_model=FeedbackResponse)
+async def submit_feedback(feedback: FeedbackRequest) -> FeedbackResponse:
+    """Store optional user feedback; analysis input itself is not persisted."""
+    success = repository.save_feedback(feedback, datetime.now(timezone.utc).isoformat())
+    if not success:
+        raise HTTPException(status_code=500, detail="Feedback could not be recorded.")
+    return FeedbackResponse(success=True, message="Thank you. Your feedback was recorded.")

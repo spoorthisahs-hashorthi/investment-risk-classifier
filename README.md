@@ -1,157 +1,59 @@
-# Risk Classification of Online Investment Schemes Using Text and URL Analysis
+# Investment Risk Screener
 
-An educational, early-warning web application that analyzes user-submitted promotional text and website links for potential investment risk indicators, brand impersonation, and deceptive guarantees.
+An educational early-warning tool for reviewing promotional text and website URL structure for common investment risk indicators. It is a rules-based screening aid, not a fraud determination, investment recommendation, or safety guarantee.
 
----
+## Architecture
 
-## 🚀 Key Features
+- `frontend/`: Next.js App Router and TypeScript user interface.
+- `backend/`: FastAPI service. Python owns the authoritative text and URL rules and result synthesis.
+- `supabase/`: an initial database migration retained for future evaluation; database persistence is not used by the current analysis flow.
 
-- **Multi-Signal Screening**: Accepts pasted marketing copy, social media pitches, website links, or both.
-- **Explainable Indicators**: Flags specific warning patterns (guaranteed returns, unrealistic compound interest, urgency pressure, recruitment incentives, lookalike domains, suspicious TLDs, and URL shorteners) with exact quotes and character offsets.
-- **SSRF-Protected Network Inspection**: Safely probes target links while defending against Server-Side Request Forgery (SSRF), private IP ranges, loopback targets, cloud metadata endpoints, and redirect loops.
-- **Explicit Uncertainty Awareness**: Calibrates uncertainty (High / Medium / Low) and provides an explicit **Insufficient Information** state when input is too sparse.
-- **Actionable Due Diligence Checklist**: Generates custom verification steps tailored to the detected risk signals, linking directly to official securities regulators (FINRA BrokerCheck, SEC EDGAR, UK FCA, ASIC).
-- **Privacy by Design**: Raw promotional text is **never** stored in persistent databases. Only one-way SHA-256 hashes and truncated domain names are retained.
-- **Zero-Friction Local Development**: Operates out-of-the-box with embedded SQLite storage if cloud Supabase credentials are not supplied.
+The browser sends requests to the Next.js rewrite at `/api/backend`, which forwards them to the Python API. Analysis is performed in memory. The analysis endpoint does not save submitted text, URLs, findings, or reports. The optional feedback endpoint stores feedback in the local SQLite database; feedback may itself contain personal or sensitive information, so do not expose that endpoint in a public deployment without adding retention and authorization controls. A legacy SQLite repository implementation and database may exist in `backend/data/`; analysis requests no longer write to it.
 
----
+## Local setup
 
-## 🛠️ Technology Stack
+Requirements: Python 3.11 or newer and Node.js/npm compatible with the versions in `frontend/package-lock.json`.
 
-| Layer | Technology | Primary Role |
-|---|---|---|
-| **Frontend** | Next.js 15 (App Router), TypeScript, Tailwind CSS, Lucide | User experience, validation, interactive highlights, accessible presentation |
-| **Backend API** | Python 3.11+, FastAPI, Pydantic v2, HTTPX, BeautifulSoup4 | Authoritative risk scoring, indicator extraction, SSRF-safe probing, synthesis |
-| **Persistence** | Supabase PostgreSQL (Production) / SQLite (Local Fallback) | Non-sensitive analysis logs, feedback collection, RLS policies |
-
----
-
-## 📦 Project Structure
-
-```
-├── backend/
-│   ├── app/
-│   │   ├── api/v1/endpoints.py       # API endpoints (/analyze, /sample-cases, /feedback)
-│   │   ├── analyzers/
-│   │   │   ├── text_analyzer.py      # Linguistic indicator detection & offset extraction
-│   │   │   ├── url_analyzer.py       # Lexical, brand typosquatting & TLD checks
-│   │   │   ├── network_inspector.py  # SSRF-protected DNS & HTTP redirect inspection
-│   │   │   └── synthesis.py          # Category assignment & uncertainty calibration
-│   │   ├── models/schemas.py         # Typed Pydantic request/response contracts
-│   │   ├── storage/repository.py     # SQLite fallback & Supabase repository
-│   │   ├── config.py                 # Application settings & environment vars
-│   │   └── main.py                   # FastAPI app entrypoint, CORS & error handlers
-│   ├── tests/                        # 26 comprehensive pytest unit & integration tests
-│   └── requirements.txt              # Backend dependencies
-├── frontend/
-│   ├── app/                          # Next.js App Router (layout.tsx, page.tsx, globals.css)
-│   ├── components/                   # Modular React UI components
-│   │   ├── AnalysisForm.tsx          # Dual-input form with samples & shortcuts
-│   │   ├── RiskResultCard.tsx        # Category banner, uncertainty gauge, summary
-│   │   ├── FindingsList.tsx          # Text & URL findings with severity tags
-│   │   ├── HighlightedTextViewer.tsx # Interactive text span highlighter
-│   │   ├── VerificationChecklist.tsx # Interactive regulator verification steps
-│   │   ├── SystemChecksAccordion.tsx # Completed vs. unavailable checks audit log
-│   │   ├── FeedbackWidget.tsx        # User feedback collection
-│   │   └── EducationalGuide.tsx      # Investor safety guidelines & scheme typologies
-│   ├── lib/                          # API client & TypeScript interfaces
-│   └── package.json                  # Next.js dependencies & scripts
-├── supabase/
-│   └── migrations/                   # SQL migration with Row Level Security (RLS)
-└── docs/                             # Technical architecture, security, and rule specifications
-    ├── ARCHITECTURE.md
-    ├── SECURITY_PRIVACY.md
-    └── ANALYSIS_RULES.md
-```
-
----
-
-## 🏃 Quickstart Guide
-
-### 1. Backend Setup (Python FastAPI)
+Start the API:
 
 ```bash
 cd backend
-
-# Create virtual environment and activate
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run backend tests
-PYTHONPATH=. pytest tests/ -v
-
-# Start FastAPI server on port 8000
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn app.main:app --reload --port 8000
 ```
-The FastAPI documentation will be available at `http://127.0.0.1:8000/docs`.
 
-### 2. Frontend Setup (Next.js + TypeScript)
-
-In a new terminal window:
+In another terminal, start the web app:
 
 ```bash
 cd frontend
-
-# Install dependencies
-npm install
-
-# Typecheck and build
-npm run typecheck
-npm run build
-
-# Start Next.js development server on port 3000
+npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000` in your web browser.
+Open <http://localhost:3000>. The Next.js rewrite defaults to `http://127.0.0.1:8000`; set `BACKEND_URL` for a different server. `NEXT_PUBLIC_API_URL` can override the browser API base URL. `CORS_ORIGINS` configures backend origins. Request size limits are fixed by the request schema; no secrets or external service credentials are needed for local analysis.
 
----
+## Analysis coverage and interpretation
 
-## ⚙️ Environment Variables
+The current baseline uses explicit lexical rules, not a trained model or labeled dataset. Text checks cover guaranteed/high periodic returns, risk claims, urgency, recruitment, payment methods, and vague mechanisms. URL checks cover syntax, URL shorteners, selected TLDs, suspicious paths, brand references, and lookalike strings. Findings include observed evidence and plain-language explanations. The overall score is a heuristic indicator, not a probability.
 
-### Backend (`backend/.env` optional)
-```env
-ENVIRONMENT=development
-DEBUG=true
-CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-NETWORK_INSPECTION_ENABLED=true
-NETWORK_TIMEOUT_SECONDS=4.0
-MAX_REDIRECTS=3
+Categories are **Lower concern**, **Needs review**, **Elevated concern**, and **Insufficient information**. They describe how the submitted material matched these rules. They do not establish whether a firm or offer is legitimate.
 
-# Optional Supabase persistence
-SUPABASE_URL=
-SUPABASE_KEY=
-```
+The current service does not visit submitted URLs, follow redirects, inspect page contents, check HTTPS certificates or domain age, or query official registers. These checks appear as skipped or unavailable where relevant. Verify the exact legal entity and offer using the relevant regulator in your jurisdiction. A register entry is not proof that a specific offer is safe.
 
-### Frontend (`frontend/.env.local` optional)
-```env
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api/v1
-```
+No third-party dataset or trained model is bundled. Example cases are hand-authored educational fixtures, not evaluation data; no accuracy claim is made.
 
----
+## Security and privacy
 
-## 🧪 Validation & Test Commands
+- Text is limited to 20,000 characters and URL input to 2,048 characters by the API schema.
+- Only HTTP(S) URLs are accepted; URLs with embedded credentials are rejected.
+- Submitted websites are not contacted, avoiding SSRF and redirect risks in this version.
+- The analysis route does not persist or log submitted text or URLs. Application exception logs include request method/path only.
+- Deploy behind request-size and rate limits. Configure trusted origins for production and protect/remove the optional feedback endpoint before public use.
 
-Run the backend verification suite:
-```bash
-PYTHONPATH=backend backend/.venv/bin/pytest backend/tests/ -v
-```
+## Validation
 
-Run frontend typecheck:
-```bash
-cd frontend && npm run typecheck
-```
+From `backend/`, run `PYTHONPATH=. python -m pytest -q`. From `frontend/`, run `npm run typecheck` and `npm run build`. The repository has no ESLint dependency/configuration yet; `npm run lint` invokes Next's setup prompt and is not currently a non-interactive lint check.
 
-Run frontend build:
-```bash
-cd frontend && npm run build
-```
-
----
-
-## ⚖️ Important Disclaimer
-
-This application is strictly an educational screening aid. It is **not** a financial advisor, credit bureau, law enforcement system, or definitive fraud detector. Indicators do not prove fraud, and the absence of detected indicators does not guarantee safety. Always consult official national securities regulators before committing funds.
+See [`docs/FUNCTIONAL_BACKTEST.md`](docs/FUNCTIONAL_BACKTEST.md) for the feature-by-feature audit and synthetic regression coverage. The suite is not a statistical accuracy evaluation.

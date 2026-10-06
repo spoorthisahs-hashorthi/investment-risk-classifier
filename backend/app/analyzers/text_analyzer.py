@@ -32,10 +32,10 @@ TEXT_RULES: List[TextRule] = [
         title="Guaranteed Returns or Profit Promise",
         category=FindingCategory.FINANCIAL_PROMISE,
         severity=SeverityLevel.CRITICAL,
-        pattern=r"\b(100%\s+guaranteed(\s+(returns?|profits?|income|capital|growth))?|guaranteed\s+(returns?|profits?|income|yield|growth|payouts?|wealth|capital|daily\s+profit)|risk-?free\s+(profit|return|income))\b",
+        pattern=r"\b(100%\s+guarantee(?:s|d)?(\s+(returns?|profits?|income|capital|growth))?|guarantee(?:s|d)?\s+(returns?|profits?|income|yield|growth|payouts?|wealth|capital|daily\s+profit)|risk-?free\s+(profit|return|income))\b",
         explanation=(
-            "Legitimate financial investments always carry market risk. Promises of guaranteed profits "
-            "are one of the strongest hallmarks of fraudulent schemes and high-yield investment programs (HYIPs)."
+            "Most investments carry risk, so a promise of guaranteed profit deserves careful verification. "
+            "This wording is a warning signal, but it does not establish whether the offer is fraudulent."
         ),
     ),
     # 2. Unrealistic periodic returns (e.g., 2% daily, 10% weekly)
@@ -46,8 +46,8 @@ TEXT_RULES: List[TextRule] = [
         severity=SeverityLevel.CRITICAL,
         pattern=r"\b([1-9][0-9]?(\.[0-9]+)?)\s*%\s*(daily|per\s*day|hourly|per\s*hour|a\s*day|every\s*day|weekly|per\s*week|a\s*week)\b",
         explanation=(
-            "Promising fixed percentage returns per day, hour, or week is mathematically unsustainable. "
-            "For example, even 1% daily compounded equals over 3,678% annually, which is not achievable in genuine investing."
+            "A fixed percentage return promised over a short daily or weekly period implies exceptionally rapid growth. "
+            "Check how the return is generated and independently compare it with the stated risks."
         ),
     ),
     # 3. Capital doubling / tripling promises
@@ -70,8 +70,8 @@ TEXT_RULES: List[TextRule] = [
         severity=SeverityLevel.HIGH,
         pattern=r"\b(zero\s+risk|no\s+risk|risk-?free|loss\s+impossible|impossible\s+to\s+lose|capital\s+100%\s+safe|protected\s+from\s+any\s+loss)\b",
         explanation=(
-            "All authentic investments entail risk of loss. Claiming an investment is 'zero risk' or that losses "
-            "are impossible is deceptive and illegal under most financial conduct regulations."
+            "Most investments involve some risk of loss. A 'zero risk' or 'impossible to lose' claim deserves scrutiny; "
+            "check the product documents and the risks disclosed by an independent source."
         ),
     ),
     # 5. High-pressure urgency & artificial scarcity
@@ -82,8 +82,8 @@ TEXT_RULES: List[TextRule] = [
         severity=SeverityLevel.MEDIUM,
         pattern=r"\b(act\s+now|limited\s+(spots?|slots?|time|opportunity)|only\s+[0-9]+\s+(slots?|spots?|members?)\s+left|hurry\s+up|before\s+doors\s+close|last\s+chance\s+to\s+join|join\s+before\s+it'?s\s+too\s+late|offer\s+expires\s+in\s+[0-9]+)\b",
         explanation=(
-            "Scammers fabricate intense urgency and scarcity to pressure prospective victims into committing money "
-            "before they have time to conduct due diligence, consult advisors, or verify regulatory licenses."
+            "Urgency and scarcity language can pressure readers to commit before checking an offer. "
+            "Pause and verify independently; this wording alone does not show whether the offer is legitimate."
         ),
     ),
     # 6. Referral / Downline / MLM commission emphasis
@@ -94,8 +94,8 @@ TEXT_RULES: List[TextRule] = [
         severity=SeverityLevel.HIGH,
         pattern=r"\b(referral\s+(bonus(es)?|commissions?|rewards?)|invite\s+friends?\s+and\s+earn|downline|binary\s+(plan|tree)|multi-?level|affiliate\s+tiers?|matrix\s+commission|recruit\s+[0-9]+\s+people)\b",
         explanation=(
-            "Heavy emphasis on earning through recruiting new members, downlines, or multi-level commissions "
-            "is characteristic of pyramid and Ponzi models, where old investors are paid with funds from newcomers."
+            "Earnings tied to recruiting new members or building a downline are a reason to examine where the money comes from "
+            "and whether genuine product or investment activity explains the payments. This signal alone does not establish misconduct."
         ),
     ),
     # 7. Vague / Mythical trading algorithm or automated bot claims
@@ -104,10 +104,10 @@ TEXT_RULES: List[TextRule] = [
         title="Vague or Mythical Algorithmic Trading Claim",
         category=FindingCategory.VAGUE_MECHANISM,
         severity=SeverityLevel.MEDIUM,
-        pattern=r"\b(quantum\s+ai\s+trading|automated\s+(trading\s+bot|profit\s+system)|foolproof\s+algorithm|secret\s+(trading\s+loophole|algorithm)|proprietary\s+crypto\s+bot|100%\s+automated\s+profits?)\b",
+        pattern=r"\b(quantum\s+ai\s+(trading\s+)?(bot|system)|ai\s+trading\s+bot|automated\s+(ai\s+)?(trading\s+bot|profit\s+system)|foolproof\s+algorithm|secret\s+(trading\s+loophole|algorithm)|proprietary\s+crypto\s+bot|100%\s+automated\s+profits?)\b",
         explanation=(
-            "Vague descriptions referencing mysterious 'quantum algorithms', 'flawless AI trading bots', or 'secret loopholes' "
-            "often obscure the complete absence of any verifiable investment strategy or licensed asset management."
+            "References to a secret or proprietary algorithm do not explain how returns are generated. "
+            "Ask for specific, independently verifiable information about the strategy and its risks."
         ),
     ),
     # 8. Demands for direct, irreversible crypto transfers or unusual payments
@@ -116,10 +116,21 @@ TEXT_RULES: List[TextRule] = [
         title="Direct Irreversible Payment or Crypto Demand",
         category=FindingCategory.PAYMENT_METHOD,
         severity=SeverityLevel.HIGH,
-        pattern=r"\b(send\s+(bitcoin|btc|usdt|eth|crypto)([\w\s\-_]{0,25})\s+to\s+([\w\s]{0,15})(wallet|address)|(deposit|transfer)\s+(usdt|btc|bitcoin|crypto|funds)\s+(trc-?20|erc-?20)|usdt\s+(trc-?20|erc-?20)|western\s+union|moneygram|gift\s+cards?|no\s+bank\s+verification\s+needed|direct\s+wallet\s+transfer)\b",
+        pattern=r"\b(?:send|transfer|deposit)\s+(?:bitcoin|btc|usdt|eth|crypto)(?:\s*\([^)]{1,30}\))?[^\n]{0,40}\bto\b[^\n]{0,25}\b(?:wallet|address|contract|account)\b|\b(?:deposit|transfer)\s+(?:usdt|btc|bitcoin|crypto|funds)\s+(?:trc-?20|erc-?20)|\busdt\s*(?:\(\s*(?:trc-?20|erc-?20)\s*\)|(?:trc-?20|erc-?20))|\bwestern\s+union\b|\bmoneygram\b|\bgift\s+cards?\b|\bno\s+bank\s+verification\s+needed\b|\bdirect\s+wallet\s+transfer\b",
         explanation=(
-            "Legitimate investment firms use regulated custodial accounts, escrow, or licensed payment processors. "
-            "Demanding direct cryptocurrency wallet transfers, money orders, or gift cards makes payments nearly impossible to trace or reverse."
+            "A request to send money directly to a wallet, contract, or unusual payment channel can make the recipient and recovery options harder to confirm. "
+            "Verify the payment route independently before transferring funds."
+        ),
+    ),
+    TextRule(
+        rule_id="text_upfront_payment",
+        title="Upfront or Release Fee Request",
+        category=FindingCategory.PAYMENT_METHOD,
+        severity=SeverityLevel.HIGH,
+        pattern=r"\b(?:pay|send|transfer|provide)\s+(?:an?\s+)?(?:upfront|advance|activation|processing|withdrawal|release)\s+(?:fee|payment|charge|deposit|tax)\b|\b(?:fee|tax|charge)\s+(?:is\s+)?required\s+before\s+(?:withdrawal|release|payout|activation)\b",
+        explanation=(
+            "A request to pay a fee before an account is activated or funds are released deserves independent verification. "
+            "The wording is a warning sign, not proof that the request is fraudulent."
         ),
     ),
     # 9. Fake celebrity endorsement or media impersonation
@@ -130,8 +141,7 @@ TEXT_RULES: List[TextRule] = [
         severity=SeverityLevel.HIGH,
         pattern=r"\b(endorsed\s+by\s+(elon\s+musk|bill\s+gates|jeff\s+bezos|warren\s+buffett)|as\s+seen\s+on\s+(bbc|cnn|shark\s+tank|dragons?\s+den|forbes)|secret\s+(interview|leak)\s+reveals)\b",
         explanation=(
-            "Scam campaigns frequently fabricate fake quotes, video deepfakes, or photoshopped news articles "
-            "falsely claiming that prominent entrepreneurs, celebrities, or national media outlets have endorsed their platform."
+            "Celebrity and media endorsements can be misquoted or fabricated. Verify the endorsement through the person's or outlet's own channels."
         ),
     ),
     # 10. Unrealistic lifestyle and quick retirement promises
@@ -142,8 +152,7 @@ TEXT_RULES: List[TextRule] = [
         severity=SeverityLevel.LOW,
         pattern=r"\b(quit\s+your\s+(9\s*to\s*5|day\s+job)|financial\s+freedom\s+in\s+[0-9]+\s*(days|weeks)|become\s+a\s+millionaire\s+(overnight|in\s+months)|passive\s+wealth\s+machine)\b",
         explanation=(
-            "Sensational appeals to instant wealth, escaping employment, or effortless passive fortunes are "
-            "emotional manipulation strategies designed to bypass critical thinking."
+            "Promises of rapid wealth or effortless income are promotional claims. Check the terms, risks, and evidence supporting them independently."
         ),
     ),
 ]
